@@ -22,4 +22,6 @@
     <string name="signin_failed">Sign-In failed</string>
     <string name="license_failed">License check failed</string>
     <string name="signin_other_error">some other sign-in error occurred</string>
+    <string name="sign_out">Sign-out</string>
+    <string name="disconnected">Disconnected</string>
 </resources>

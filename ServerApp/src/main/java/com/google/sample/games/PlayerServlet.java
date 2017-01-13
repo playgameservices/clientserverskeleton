@@ -20,6 +20,8 @@ import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeTokenRequest;
 import com.google.api.client.googleapis.auth.oauth2.GoogleClientSecrets;
 import com.google.api.client.googleapis.auth.oauth2.GoogleTokenResponse;
+import com.google.api.client.http.HttpExecuteInterceptor;
+import com.google.api.client.http.HttpRequest;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.gson.Gson;
@@ -369,12 +371,20 @@ public class PlayerServlet extends HttpServlet {
                             "")
                             .execute();
 
+            log("hasRefresh == " + (tokenResponse.getRefreshToken() != null));
             log("Exchanging authCode: " + authCode + " for token");
-            Credential credential = new Credential.Builder(BearerToken.authorizationHeaderAccessMethod())
+            Credential credential = new Credential.Builder(
+                    BearerToken.authorizationHeaderAccessMethod())
                     .setJsonFactory(JacksonFactory.getDefaultInstance())
                     .setTransport(HTTPTransport)
                     .setTokenServerEncodedUrl("https://www.googleapis" +
                             ".com/oauth2/v4/token")
+                    .setClientAuthentication(new HttpExecuteInterceptor() {
+                        @Override
+                        public void intercept(HttpRequest request) throws IOException {
+
+                        }
+                    })
                     .build()
                     .setFromTokenResponse(tokenResponse);
 
@@ -400,7 +410,8 @@ public class PlayerServlet extends HttpServlet {
                 }
             }
 
-            return ok ? HttpServletResponse.SC_OK : HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+            return ok ? HttpServletResponse.SC_OK :
+                    HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
 
         } catch (IOException e) {
             e.printStackTrace();

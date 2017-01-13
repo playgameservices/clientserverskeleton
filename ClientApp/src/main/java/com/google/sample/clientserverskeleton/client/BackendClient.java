@@ -107,8 +107,10 @@ public class BackendClient {
         // Exchanging the authcode is a one time thing.  It can't be cached,
         // and in most cases cannot be retried.
         req.setShouldCache(false);
-        req.setRetryPolicy(new DefaultRetryPolicy(DefaultRetryPolicy
-                .DEFAULT_TIMEOUT_MS, 0, DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
+        req.setRetryPolicy(new DefaultRetryPolicy(
+                DefaultRetryPolicy.DEFAULT_TIMEOUT_MS,
+                0,
+                DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
 
         queue.add(req);
     }
@@ -120,7 +122,8 @@ public class BackendClient {
      * @param listener - the listener object invoked when the call has
      *                 completed.
      */
-    public void getPlayer(String playerId, ClientResultListener<ServerPlayer> listener) {
+    public void getPlayer(String playerId,
+                          ClientResultListener<ServerPlayer> listener) {
         String path = "player/" + playerId;
         String getPlayerURL = hostURL + "/" + path;
         BackendRequest<ServerPlayer> req = new BackendRequest<>(
@@ -156,7 +159,12 @@ public class BackendClient {
          */
         @Override
         public void onErrorResponse(VolleyError error) {
-            listener.onFailure(error.networkResponse.statusCode, error.getMessage());
+            if (error.networkResponse != null) {
+                listener.onFailure(error.networkResponse.statusCode,
+                        error.getMessage());
+            } else {
+                listener.onFailure(555,error.getMessage());
+            }
         }
 
         /**
@@ -194,16 +202,19 @@ public class BackendClient {
         }
 
         /**
-         * Subclasses can override this method to parse 'networkError' and return a more specific error.
-         * <p>
-         * <p>The default implementation just returns the passed 'networkError'.</p>
+         * Subclasses can override this method to parse 'networkError' and
+         * return a more specific error.
+         * <p>The default implementation just returns the passed
+         * 'networkError'.</p>
          *
          * @param volleyError the error retrieved from the network
          * @return an NetworkError augmented with additional information
          */
         @Override
         protected VolleyError parseNetworkError(VolleyError volleyError) {
-            handleSessionCookie(volleyError.networkResponse.headers);
+            if (volleyError.networkResponse != null) {
+                handleSessionCookie(volleyError.networkResponse.headers);
+            }
             return super.parseNetworkError(volleyError);
         }
 
