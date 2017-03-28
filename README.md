@@ -98,6 +98,17 @@ Play Game Services on the device.
 3. In the client app, press Post AuthCode to server.  This will get an authcode
 and send it to the server, which will respond with the player object.
 
+## Native (C++) client integration
+The project __NativeClientApp__ contains the partial implementation of the
+client app in C++.  It uses a Java library that contains an Android fragment
+which attaches to the main activity and performs the authentication.  The
+authentication state is kept at an application level, so once this
+authentication is performed, all other calls to authenticate (such as <code>
+[GamesServices.StartAuthorizationUI()](https://developers.google.com/games/services/cpp/api/class/gpg/game-services#classgpg_1_1_game_services_1a600e081f4b2eade6f3d4372c6a54c18f)
+</code>will complete silently.
+
+The resources and build.gradle file must be configured as described in the
+ClientApp section in order to authenticate successfully.
 
 
 ## Questions? Problems?

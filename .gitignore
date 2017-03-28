@@ -5,3 +5,5 @@ build/
 *.iml
 local.properties
 local.settings
+.externalNativeBuild/
+*.apk
