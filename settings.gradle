@@ -1,1 +1,1 @@
-include ':ClientApp', ':ServerApp'
+include ':ClientApp', ':ServerApp', ':NativeClientApp'

@@ -130,14 +130,12 @@ public class MainActivity extends Activity implements View.OnClickListener,
 
         // Not needed in an actual app, but since there is a lot of external
         // configuration for this sample, check that it is configured.
-        boolean shouldAutoConnect = validateSampleConfigurationSet();
+        validateSampleConfigurationSet();
 
         // This just connects the client.  If there is no user signed in, you
         // still need to call Auth.GoogleSignInApi.getSignInIntent() to start
         // the sign-in process.
-        if (shouldAutoConnect) {
-            mGoogleApiClient.connect(GoogleApiClient.SIGN_IN_MODE_OPTIONAL);
-        }
+        mGoogleApiClient.connect(GoogleApiClient.SIGN_IN_MODE_OPTIONAL);
     }
 
     @Override
