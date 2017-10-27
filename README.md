@@ -98,6 +98,12 @@ Play Game Services on the device.
 3. In the client app, press Post AuthCode to server.  This will get an authcode
 and send it to the server, which will respond with the player object.
 
+## Retrieving multiple server auth codes
+
+The server auth codes are single use codes.  If your server app requires a server auth code
+after the first exchange, you need to call signInSilently() to refresh the GoogleSignInAccount
+object, including the serverAuthCode.
+
 ## Native (C++) client integration
 The project __NativeClientApp__ contains the partial implementation of the
 client app in C++.  It uses a Java library that contains an Android fragment
