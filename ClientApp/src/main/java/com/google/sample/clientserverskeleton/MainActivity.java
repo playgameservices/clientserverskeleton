@@ -17,26 +17,28 @@ package com.google.sample.clientserverskeleton;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.Dialog;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 
 import com.google.android.gms.auth.api.Auth;
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.auth.api.signin.GoogleSignInResult;
-import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
-import com.google.android.gms.common.api.GoogleApiClient;
-import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.games.Games;
+import com.google.android.gms.games.Player;
+import com.google.android.gms.games.PlayersClient;
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
 import com.google.sample.clientserverskeleton.client.BackendClient;
 import com.google.sample.clientserverskeleton.client.ClientResultListener;
 import com.google.sample.clientserverskeleton.model.ServerPlayer;
@@ -45,12 +47,10 @@ import java.text.MessageFormat;
 
 /**
  * Skeleton activity demonstrating how to sign into a Play Game Services game
- * and pass a serverAuthCode to a backend server, where it can be exchanged for
+ * and pass a mServerAuthCode to a backend server, where it can be exchanged for
  * and access token.
  */
-public class MainActivity extends Activity implements View.OnClickListener,
-        GoogleApiClient.ConnectionCallbacks,
-        GoogleApiClient.OnConnectionFailedListener {
+public class MainActivity extends Activity implements View.OnClickListener {
 
     // For logging.
     private static final String TAG = "clientserversample";
@@ -64,15 +64,19 @@ public class MainActivity extends Activity implements View.OnClickListener,
     Button serverButton;
     Button getPlayerButton;
 
-    // GoogleAPI client object.
-    private GoogleApiClient mGoogleApiClient;
+    // GoogleSignInClient manages the user sign-in and server auth code access.
+    private GoogleSignInClient mSignInClient;
 
     // Object encapsulating the communication with the backend server.
     private BackendClient backendClient;
 
     // The server auth code received from the Sign-In API, which is
     // passed to the backend server.
-    private String serverAuthCode;
+    private String mServerAuthCode;
+
+    // The player Id from the Games API
+    private String mCurrentPlayerId;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -92,30 +96,26 @@ public class MainActivity extends Activity implements View.OnClickListener,
         getPlayerButton.setOnClickListener(this);
         getPlayerButton.setEnabled(false);
 
-        // Check the local preferences to see if the server needs a fresh
-        // refresh token.  Ususally, you should not force a refresh token since
-        // it will force the user to be shown the the consent screen again
-        // and they will need to accept.  Instead, you should persist the
-        // refresh token on the server and use it when the access token has
-        // expired.
-        boolean forceCodeForRefreshToken = shouldForceRefresh();
-
         String webclientId = getString(R.string.webclient_id);
+
         // Request authCode so we can send the code to the server.
         GoogleSignInOptions options = new GoogleSignInOptions
                 .Builder(GoogleSignInOptions.DEFAULT_GAMES_SIGN_IN)
-                .requestServerAuthCode(webclientId, forceCodeForRefreshToken)
+                .requestServerAuthCode(webclientId)
                 .build();
 
-        mGoogleApiClient = new GoogleApiClient.Builder(this)
-                .addApi(Games.API)
-                .addApi(Auth.GOOGLE_SIGN_IN_API, options)
-                .addConnectionCallbacks(this)
-                .addOnConnectionFailedListener(this)
-                .build();
+        mSignInClient = GoogleSignIn.getClient(this, options);
 
-        serverAuthCode = null;
+        mServerAuthCode = null;
         backendClient = new BackendClient(getString(R.string.host_url), this);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        // Attempt to sign-in silently.
+        signInSilently();
     }
 
     /**
@@ -131,20 +131,6 @@ public class MainActivity extends Activity implements View.OnClickListener,
         // Not needed in an actual app, but since there is a lot of external
         // configuration for this sample, check that it is configured.
         validateSampleConfigurationSet();
-
-        // This just connects the client.  If there is no user signed in, you
-        // still need to call Auth.GoogleSignInApi.getSignInIntent() to start
-        // the sign-in process.
-        mGoogleApiClient.connect(GoogleApiClient.SIGN_IN_MODE_OPTIONAL);
-    }
-
-    @Override
-    protected void onStop() {
-        Log.d(TAG, "onStop()");
-        super.onStop();
-        if (mGoogleApiClient.isConnected()) {
-            mGoogleApiClient.disconnect();
-        }
     }
 
     @Override
@@ -156,9 +142,9 @@ public class MainActivity extends Activity implements View.OnClickListener,
             GoogleSignInResult result =
                     Auth.GoogleSignInApi.getSignInResultFromIntent(intent);
             if (result.isSuccess()) {
-                onSignedIn(result.getSignInAccount(), null);
+                onSignedIn(result.getSignInAccount());
             } else {
-                showSignInError(result.getStatus().getStatusCode());
+                showExceptionMessage(new ApiException(result.getStatus()));
             }
         } else {
             super.onActivityResult(requestCode, responseCode, intent);
@@ -170,7 +156,7 @@ public class MainActivity extends Activity implements View.OnClickListener,
         switch (v.getId()) {
             case R.id.signin:
                 // start the sign-in flow
-                if (!mGoogleApiClient.hasConnectedApi(Games.API)) {
+                if (mSignInClient.getLastSignedInAccount() == null) {
                     Log.d(TAG, "Sign-in button clicked");
                     handleSignin();
                 } else {
@@ -186,77 +172,45 @@ public class MainActivity extends Activity implements View.OnClickListener,
         }
     }
 
-    @Override
-    public void onConnected(@Nullable final Bundle connectionHint) {
-        if (mGoogleApiClient.hasConnectedApi(Games.API)) {
-            Auth.GoogleSignInApi.silentSignIn(mGoogleApiClient).setResultCallback(
-                    new ResultCallback<GoogleSignInResult>() {
-                        @Override
-                        public void onResult(
-                                @NonNull GoogleSignInResult googleSignInResult) {
-                            if (googleSignInResult.isSuccess()) {
-                                onSignedIn(googleSignInResult.getSignInAccount(),
-                                        connectionHint);
-                            } else {
-                                Log.e(TAG, "Error with silentSignIn: " +
-                                        googleSignInResult.getStatus());
-                                // Don't show a message here, this only happens
-                                // when the user can be authenticated, but needs
-                                // to accept consent requests.
-                                handleSignOut();
-                            }
+    /**
+     * Attempt to sign in silently.  This should be called in onResume(), and whenever another
+     * mServerAuthCode is needed.
+     */
+    private void signInSilently() {
+        mSignInClient.silentSignIn().addOnCompleteListener(this,
+                new OnCompleteListener<GoogleSignInAccount>() {
+                    @Override
+                    public void onComplete(@NonNull Task<GoogleSignInAccount> task) {
+                        if (task.isSuccessful()) {
+                            onSignedIn(task.getResult());
+                        } else {
+                            Log.d(TAG,"silent sign-in failed: " + task.getException());
                         }
                     }
-            );
-        } else {
-            handleSignOut();
-        }
-    }
-
-    /**
-     * Does nothing, but the interface requires an implementation.  A typical
-     * application would disable any UI that requires a connection.  When the
-     * connection is restored, onConnected will be called.
-     *
-     * @param cause - The reason of the disconnection.
-     */
-    @Override
-    public void onConnectionSuspended(int cause) {
-        Log.d(TAG, "onConnectionSuspended() called: " + cause);
-    }
-
-    /**
-     * Show a message that it failed.
-     *
-     * @param result - The result information.
-     */
-    @Override
-    public void onConnectionFailed(@NonNull ConnectionResult result) {
-        Log.d(TAG, "onConnectionFailed() called, result: " + result);
-
-        showSignInError(result.getErrorCode());
-
-        signinButton.setText(getString(R.string.signin));
-        serverButton.setEnabled(false);
+                });
     }
 
     /**
      * Show a meaningful error when sign-in fails.
      *
-     * @param errorCode - The errorCode.
+     * @param exception - The exception.
      */
-    public void showSignInError(int errorCode) {
-        Dialog dialog = GoogleApiAvailability.getInstance()
-                .getErrorDialog(this, errorCode, RC_SIGN_IN);
-        if (dialog != null) {
-            dialog.show();
-        } else {
-            // no built-in dialog: show the fallback error message
-            (new AlertDialog.Builder(this))
-                    .setMessage("Could not sign in!")
-                    .setNeutralButton(android.R.string.ok, null)
-                    .show();
+    public void showExceptionMessage(Exception exception) {
+        Log.e(TAG, "Exception: " + exception.getMessage(), exception);
+        String errorMessage = null;
+        if (exception instanceof ApiException) {
+            ApiException apiException = (ApiException) exception;
+            int errorCode = apiException.getStatusCode();
+            errorMessage = GoogleApiAvailability.getInstance().getErrorString(errorCode);
         }
+
+        if (errorMessage == null) {
+            errorMessage = "Exception encountered!";
+        }
+        (new AlertDialog.Builder(this))
+                .setMessage(errorMessage)
+                .setNeutralButton(android.R.string.ok, null)
+                .show();
     }
 
     /**
@@ -268,63 +222,49 @@ public class MainActivity extends Activity implements View.OnClickListener,
      * </p>
      *
      * @param acct   - the Google account information.
-     * @param bundle - the connection Hint.
      */
-    public void onSignedIn(GoogleSignInAccount acct, @Nullable Bundle bundle) {
+    public void onSignedIn(GoogleSignInAccount acct) {
         Log.d(TAG, "onConnected() called. Sign in successful!");
         signinButton.setText(R.string.sign_out);
 
-        serverButton.setEnabled(true);
-        getPlayerButton.setEnabled(true);
+        PlayersClient playersClient = Games.getPlayersClient(this, acct);
+        playersClient.getCurrentPlayer().addOnCompleteListener(new OnCompleteListener<Player>() {
+            @Override
+            public void onComplete(@NonNull Task<Player> task) {
+                serverButton.setEnabled(task.isSuccessful());
+                getPlayerButton.setEnabled(task.isSuccessful());
+                if (task.isSuccessful()) {
+                    mCurrentPlayerId = task.getResult().getPlayerId();
+                    status.setText(
+                            MessageFormat.format("Connected as {0}",
+                                    task.getResult().getDisplayName()));
+                } else {
+                    Log.e(TAG,"Error getting player: " + task.getException());
+                }
+            }
+        });
 
-        status.setText(
-                MessageFormat.format("Connected as {0}",
-                        Games.Players.getCurrentPlayer(
-                                mGoogleApiClient).getDisplayName()));
-        serverAuthCode = acct.getServerAuthCode();
-        setForceRefresh(false);
+        // Save the server auth code to send to the server.
+        mServerAuthCode = acct.getServerAuthCode();
     }
 
     private void handleSignOut() {
         // sign out.
         Log.d(TAG, "Sign-out button clicked");
-        if (mGoogleApiClient.hasConnectedApi(Games.API)) {
-            Games.signOut(mGoogleApiClient);
-            Auth.GoogleSignInApi.signOut(mGoogleApiClient);
-        }
-
-        /// dont do this  mGoogleApiClient.disconnect();
-        signinButton.setText(getString(R.string.signin));
-        serverButton.setEnabled(false);
-        getPlayerButton.setEnabled(false);
-        status.setText(R.string.disconnected);
+        mSignInClient.signOut().addOnCompleteListener(new OnCompleteListener<Void>() {
+            @Override
+            public void onComplete(@NonNull Task<Void> task) {
+                signinButton.setText(getString(R.string.signin));
+                serverButton.setEnabled(false);
+                getPlayerButton.setEnabled(false);
+                mCurrentPlayerId = null;
+                status.setText(R.string.disconnected);
+            }
+        });
     }
 
     private void handleSignin() {
-        Intent signInIntent = Auth.GoogleSignInApi.getSignInIntent(mGoogleApiClient);
-        startActivityForResult(signInIntent, RC_SIGN_IN);
-    }
-
-    /**
-     * Check to see if we set a flag to force the user to re-consent and allow
-     * the backend server to get another refresh token.  It is stored in the
-     * preferences so we can consult its value when the application is
-     * restarted.
-     * @return true to force getting a refresh token.
-     */
-    private boolean shouldForceRefresh() {
-        return getPreferences(MODE_PRIVATE).getBoolean("ForceRefresh", false);
-    }
-
-    /**
-     * Sets the state of forcing the user to re-consent when the application
-     * starts.  This flag is set based on the response from the backend server
-     * which will pass a flag when it requires the refresh token to be sent.
-     * @param flag the value.
-     */
-    private void setForceRefresh(boolean flag) {
-        getPreferences(MODE_PRIVATE).edit().putBoolean
-                ("ForceRefresh", flag).apply();
+        startActivityForResult(mSignInClient.getSignInIntent(), RC_SIGN_IN);
     }
 
     /**
@@ -338,11 +278,6 @@ public class MainActivity extends Activity implements View.OnClickListener,
                 public void onSuccess(ServerPlayer player) {
                     status.setText(MessageFormat.format(
                             "Player info from server: {0}", player));
-                    // If the server indicates it needs a refresh token for this
-                    // player, record that for next time.  The user will need
-                    // to sign back in and re-consent, so it should only be done
-                    // when it makes sense in terms of app experience.
-                    setForceRefresh(player.getNeedRefreshToken());
                 }
 
                 @Override
@@ -353,15 +288,34 @@ public class MainActivity extends Activity implements View.OnClickListener,
             };
 
     /**
-     * Gets the server auth code from the Games API, and then passes it along
-     * to the backend server.
+     * Gets the server auth code from the sign-in client and then sends it to the server.
      */
     private void handleSendToServer() {
-        backendClient.sendAuthCode(
-                Games.Players.getCurrentPlayerId(mGoogleApiClient),
-                serverAuthCode,
-                onServerPlayerResult
-        );
+        // If we already have a code, use it.  Each auth code is single-use, so once we send it
+        // null out the auth code, so next time we'll call sign-in silently to get a new code.
+        if (mServerAuthCode != null) {
+            backendClient.sendAuthCode(
+                    mCurrentPlayerId,
+                    mServerAuthCode,
+                    onServerPlayerResult
+            );
+            mServerAuthCode = null;
+        } else {
+            // Call silent-signin and when it returns send the code to the server.
+            mSignInClient.silentSignIn().addOnCompleteListener(new OnCompleteListener<GoogleSignInAccount>() {
+                @Override
+                public void onComplete(@NonNull Task<GoogleSignInAccount> task) {
+                    if (task.isSuccessful()) {
+                        String authCode = task.getResult().getServerAuthCode();
+                        backendClient.sendAuthCode(mCurrentPlayerId,
+                                authCode,
+                                onServerPlayerResult);
+                    } else {
+                        showExceptionMessage(task.getException());
+                    }
+                }
+            });
+        }
     }
 
     /**
@@ -371,8 +325,7 @@ public class MainActivity extends Activity implements View.OnClickListener,
      * use SSL and make sure the cookies are secure.
      */
     private void handleGetServerPlayer() {
-        String playerId = Games.Players.getCurrentPlayerId(mGoogleApiClient);
-        backendClient.getPlayer(playerId, onServerPlayerResult);
+        backendClient.getPlayer(mCurrentPlayerId, onServerPlayerResult);
     }
 
     /**

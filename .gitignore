@@ -7,3 +7,4 @@ local.properties
 local.settings
 .externalNativeBuild/
 *.apk
+.DS_Store
