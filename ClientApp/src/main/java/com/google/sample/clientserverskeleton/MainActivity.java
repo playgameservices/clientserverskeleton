@@ -139,12 +139,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
         if (requestCode == RC_SIGN_IN) {
             Log.d(TAG, "onActivityResult RC_SIGN_IN, responseCode="
                     + responseCode + ", intent=" + intent);
-            GoogleSignInResult result =
-                    Auth.GoogleSignInApi.getSignInResultFromIntent(intent);
-            if (result.isSuccess()) {
-                onSignedIn(result.getSignInAccount());
-            } else {
-                showExceptionMessage(new ApiException(result.getStatus()));
+            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(intent);
+            try {
+                onSignedIn(task.getResult(ApiException.class));
+            } catch (ApiException apiException){
+                showExceptionMessage(apiException);
             }
         } else {
             super.onActivityResult(requestCode, responseCode, intent);
@@ -233,13 +232,14 @@ public class MainActivity extends Activity implements View.OnClickListener {
             public void onComplete(@NonNull Task<Player> task) {
                 serverButton.setEnabled(task.isSuccessful());
                 getPlayerButton.setEnabled(task.isSuccessful());
-                if (task.isSuccessful()) {
-                    mCurrentPlayerId = task.getResult().getPlayerId();
+                try {
+                    Player player = task.getResult(ApiException.class);
+                    mCurrentPlayerId =player.getPlayerId();
                     status.setText(
                             MessageFormat.format("Connected as {0}",
-                                    task.getResult().getDisplayName()));
-                } else {
-                    Log.e(TAG,"Error getting player: " + task.getException());
+                                   player.getDisplayName()));
+                } catch (ApiException apiException) {
+                    Log.e(TAG,"Error getting player: " + apiException);
                 }
             }
         });
@@ -305,14 +305,14 @@ public class MainActivity extends Activity implements View.OnClickListener {
             mSignInClient.silentSignIn().addOnCompleteListener(new OnCompleteListener<GoogleSignInAccount>() {
                 @Override
                 public void onComplete(@NonNull Task<GoogleSignInAccount> task) {
-                    if (task.isSuccessful()) {
-                        String authCode = task.getResult().getServerAuthCode();
-                        backendClient.sendAuthCode(mCurrentPlayerId,
-                                authCode,
-                                onServerPlayerResult);
-                    } else {
+                   try {
+                       String authCode = task.getResult(ApiException.class).getServerAuthCode();
+                       backendClient.sendAuthCode(mCurrentPlayerId,
+                               authCode,
+                               onServerPlayerResult);
+                   } catch (ApiException apiException) {
                         showExceptionMessage(task.getException());
-                    }
+                   }
                 }
             });
         }
