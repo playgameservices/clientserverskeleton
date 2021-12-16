@@ -4,9 +4,10 @@ apply plugin: 'java'
 // This is a sample server that can be run standalone.
 
 dependencies {
-    compile 'org.mortbay.jetty:jetty:6.1.26'
-    compile 'apache-log4j:log4j:1.2.14'
-    compile 'com.google.code.gson:gson:2.8.0'
-    compile 'com.google.api-client:google-api-client:1.22.0'
-    compile 'com.google.apis:google-api-services-games:v1-rev215-1.22.0'
+    implementation 'org.mortbay.jetty:jetty:6.1.26'
+    implementation 'org.apache.logging.log4j:log4j-api:2.16.0'
+    implementation 'org.apache.logging.log4j:log4j-core:2.16.0'
+    implementation 'com.google.code.gson:gson:2.8.6'
+    implementation 'com.google.api-client:google-api-client:1.22.0'
+    implementation 'com.google.apis:google-api-services-games:v1-rev215-1.22.0'
 }

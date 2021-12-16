@@ -15,7 +15,8 @@
  */
 package com.google.sample.games;
 
-import org.apache.log4j.BasicConfigurator;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.mortbay.jetty.Server;
 import org.mortbay.jetty.handler.ContextHandler;
 import org.mortbay.jetty.servlet.ServletHandler;
@@ -33,14 +34,14 @@ public class GameServer {
     // Port to handle HTTP requests on, change as needed.
     private static final int DEFAULT_HTTP_PORT = 8765;
 
+    private static final Logger logger = LogManager.getLogger();
+
     /**
      * Register all endpoints that we'll handle in our server.
      * @param args Command-line arguments.
      * @throws Exception from Jetty if the component fails to start
      */
     public static void main(String[] args) throws Exception {
-        BasicConfigurator.configure();
-
         int port = DEFAULT_HTTP_PORT;
         for(int i=0;i<args.length;i++) {
             if (args[i].equalsIgnoreCase("-p")) {
@@ -61,6 +62,9 @@ public class GameServer {
                 return;
             }
         }
+
+        logger.atInfo().log("Starting a server on port {}", port);
+
         Server server = new Server(port);
         ServletHandler servletHandler = new ServletHandler();
         SessionHandler sessionHandler = new SessionHandler();
@@ -78,8 +82,8 @@ public class GameServer {
     }
 
     private static void usage() {
-        System.err.println("Usage: " + GameServer.class.getName());
-        System.err.println("\t [-p portnum]\t listens on <portnum> for " +
-                "requests.  Uses " + DEFAULT_HTTP_PORT + " if not specified");
+        logger.atError().log("Usage: " + GameServer.class.getName());
+        logger.atError().log("\t [-p portnum]\t listens on <portnum> for " +
+            "requests.  Uses " + DEFAULT_HTTP_PORT + " if not specified");
     }
 }
